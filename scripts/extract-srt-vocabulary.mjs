@@ -35,30 +35,42 @@ function subtitleBlocks(raw) {
 
 function tokensIn(text) {
   return [...text.matchAll(/[A-Za-z]+(?:'[A-Za-z]+)?/g)].map(match => ({
-    raw: match[0], lower: match[0].toLowerCase(), index: match.index,
+    raw: match[0], lower: match[0].toLowerCase(), index: match.index, end: match.index + match[0].length,
   }));
 }
 
-function properNouns(tokens) {
+function properNouns(tokens, text, translation) {
   const phrases = [];
   const consumed = new Set();
   const capitalized = token => /^[A-Z]/.test(token.raw);
   const distinctive = token => /[A-Z].*[A-Z]/.test(token.raw) || /^[A-Z]{2,}$/.test(token.raw);
+  const nameToken = token => capitalized(token) && !token.raw.includes("'");
+  const eligibleSingleName = token => nameToken(token) && !BASIC_WORDS.has(token.lower);
+  const adjacent = (left, right) => {
+    const gap = text.slice(left.end, right.index);
+    return /^\s+$/.test(gap) || (/^\.\s+$/.test(gap) && /^(Mr|Mrs|Ms|Dr)$/i.test(left.raw));
+  };
 
   for (let start = 0; start < tokens.length; start += 1) {
-    if (!capitalized(tokens[start])) continue;
+    if (!nameToken(tokens[start])) continue;
     let end = start;
     while (end + 1 < tokens.length) {
       const next = tokens[end + 1];
-      if (capitalized(next)) { end += 1; continue; }
-      if (NAME_JOINERS.has(next.lower) && capitalized(tokens[end + 2] || { raw: '' })) { end += 2; continue; }
+      if (nameToken(next) && adjacent(tokens[end], next)) { end += 1; continue; }
+      const afterJoiner = tokens[end + 2];
+      if (NAME_JOINERS.has(next.lower) && afterJoiner && nameToken(afterJoiner)
+        && adjacent(tokens[end], next) && adjacent(next, afterJoiner)) { end += 2; continue; }
       break;
     }
 
     // A capitalized word away from sentence start is a name; at sentence start it
     // must be multi-word or have internal capitals (PiperNet) to avoid false hits.
-    const isSentenceStart = tokens[start].index === 0;
-    if (end > start || distinctive(tokens[start]) || !isSentenceStart) {
+    const previous = text.slice(0, tokens[start].index).trimEnd().at(-1);
+    const isSentenceStart = !previous || /[.!?]|(?:^|\s)-$/.test(text.slice(0, tokens[start].index).trimEnd());
+    const preservedInTranslation = translation.toLowerCase().includes(tokens[start].raw.toLowerCase());
+    const hasNonBasicPart = tokens.slice(start, end + 1).some(token => !BASIC_WORDS.has(token.lower));
+    if ((end > start && hasNonBasicPart) || (eligibleSingleName(tokens[start])
+      && (distinctive(tokens[start]) || preservedInTranslation || !isSentenceStart))) {
       const phraseTokens = tokens.slice(start, end + 1);
       const words = phraseTokens.map(token => token.raw);
       // Drop a leading sentence article, but retain it in names such as "The Gates of Galloo".
@@ -92,7 +104,7 @@ for (const file of files) {
   const buffer = await readFile(resolve(inputDir, file));
   for (const { english, chinese } of subtitleBlocks(decodeSubtitle(buffer))) {
     const tokens = tokensIn(english);
-    const { phrases, consumed } = properNouns(tokens);
+    const { phrases, consumed } = properNouns(tokens, english, chinese);
     for (const phrase of phrases) addCandidate(candidates, phrase.value, english, chinese, 'proper-noun');
     for (const [index, token] of tokens.entries()) {
       if (consumed.has(index) || token.lower.length < 4 || token.lower.includes("'") || BASIC_WORDS.has(token.lower)) continue;
