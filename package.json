@@ -1,0 +1,1 @@
+{"scripts":{"dev":"vite","build":"vite build","preview":"vite preview","extract-srt":"node scripts/extract-srt-vocabulary.mjs"},"dependencies":{"@supabase/supabase-js":"^2.112.1","@vitejs/plugin-react":"latest","lucide-react":"latest","react":"latest","react-dom":"latest","read-excel-file":"^9.3.5","vite":"latest","write-excel-file":"^4.1.1"}}

@@ -1,0 +1,4 @@
+export class SheetNotFoundError extends Error {
+	constructor(message: string);
+	name: 'SheetNotFoundError';
+}
